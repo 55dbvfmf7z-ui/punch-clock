@@ -2,70 +2,151 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Punch Clock</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Punch Clock">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b1020">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap">
 <style>
-  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:20px; }
+  :root {
+    --bg:#f1f5f9; --card:#ffffff; --text:#0f172a; --muted:#64748b; --green:#16a34a; --red:#dc2626; --input:#e2e8f0;
+    box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --input:#e2e8f0; color-scheme:dark; }
+  }
+  :root[data-theme="dark"] { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --input:#e2e8f0; color-scheme:dark; }
+  html { scroll-padding-top:env(safe-area-inset-top,0px); background:var(--bg); }
+  body { font-family:-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); margin:0; padding:20px; }
   .wrap { max-width:520px; margin:0 auto; }
   h1 { text-align:center; margin:0 0 4px; }
-  .status { text-align:center; margin-bottom:16px; color:#94a3b8; }
-  .status.on { color:#4ade80; }
-  button.main { width:100%; padding:20px; font-size:22px; font-weight:700; border:none; border-radius:14px; cursor:pointer; color:#fff; background:#16a34a; }
-  button.main.out { background:#dc2626; }
-  .card { background:#1e293b; border-radius:14px; padding:16px; margin-top:16px; }
-  .card h2 { margin:0 0 10px; font-size:16px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; }
+  .status { text-align:center; margin-bottom:16px; color:var(--muted); }
+  .status.on { color:var(--green); }
+  button.main { width:100%; padding:20px; font-size:22px; font-weight:700; border:none; border-radius:14px; cursor:pointer; color:#fff; background:var(--green); }
+  button.main.out { background:var(--red); }
+  .card { background:var(--card); border-radius:14px; padding:16px; margin-top:16px; }
+  .card h2 { margin:0 0 10px; font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
   .row { display:flex; justify-content:space-between; padding:6px 0; font-size:18px; }
-  .row b { color:#fff; }
   .settings { display:flex; gap:12px; }
-  .settings label { flex:1; font-size:14px; color:#94a3b8; }
-  .settings input { width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:none; font-size:16px; margin-top:4px; }
-  .small { font-size:13px; color:#64748b; text-align:center; margin-top:16px; }
-  .linkbtn { background:none; border:none; color:#f87171; cursor:pointer; font-size:13px; }
+  .settings label { flex:1; font-size:14px; color:var(--muted); }
+  .settings input { width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:none; font-size:16px; margin-top:4px; background:var(--input); color:#0f172a; }
+  .small { font-size:13px; color:var(--muted); text-align:center; margin-top:16px; }
+  .linkbtn { background:none; border:none; color:var(--red); cursor:pointer; font-size:13px; }
+  .logrow { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-top:1px solid rgba(128,128,128,.25); }
+  .logrow.editing { flex-direction:column; align-items:stretch; }
+  .logrow label { font-size:13px; color:var(--muted); }
+  .logrow input { width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:none; font-size:16px; margin-top:4px; background:var(--input); color:#0f172a; }
+  .logrow .hrs { text-align:right; font-weight:700; }
+  .logrow .acts { display:flex; gap:8px; align-items:center; }
+  .muted, .empty { color:var(--muted); font-size:14px; }
+  button.sec { padding:8px 14px; border-radius:8px; border:none; background:var(--input); color:#0f172a; font-size:14px; cursor:pointer; }
+  button.edit { background:none; border:none; color:var(--green); cursor:pointer; font-size:13px; padding:0; }
+  #addBtn { width:100%; margin-top:10px; }
+  button { touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  body { padding-bottom:150px; }
+  .hero { text-align:center; margin:8px 0 4px; }
+  .status { font-size:16px; margin-bottom:0; }
+  .elapsed { font-size:52px; font-weight:800; font-variant-numeric:tabular-nums; opacity:.4; }
+  .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .tile { background:rgba(128,128,128,.12); border-radius:12px; padding:12px 6px; text-align:center; display:flex; flex-direction:column; gap:4px; }
+  .tile span { font-size:12px; color:var(--muted); text-transform:uppercase; }
+  .tile b { font-size:18px; }
+  .bar { position:fixed; left:0; right:0; bottom:0; padding:12px 20px calc(12px + env(safe-area-inset-bottom,0px)); background:var(--bg); box-shadow:0 -8px 16px -10px rgba(0,0,0,.35); z-index:10; }
+  .bar .main { display:block; max-width:520px; margin:0 auto; padding:22px; font-size:24px; }
+  .toast { position:fixed; left:50%; bottom:calc(120px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:#0f172a; color:#fff; padding:10px 16px; border-radius:20px; font-size:14px; opacity:0; pointer-events:none; transition:opacity .2s; z-index:20; }
+  .toast.show { opacity:1; }
+  button.sec, button.edit, .linkbtn { min-height:44px; padding-left:14px; padding-right:14px; }
+  details summary { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; cursor:pointer; min-height:44px; display:flex; align-items:center; }
+  details[open] summary { margin-bottom:8px; }
+  .logrow select { width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:none; font-size:16px; margin-top:4px; background:var(--input); color:#0f172a; }
+  .logrow label.chk { display:flex; align-items:center; gap:8px; min-height:44px; color:var(--text); font-size:15px; }
+  .logrow label.chk input { width:auto; margin:0; }
+  .pos { color:var(--green); }
+  .neg { color:var(--red); }
+  body { font-family:"Plus Jakarta Sans",-apple-system,"Segoe UI",Roboto,sans-serif; background-image:radial-gradient(900px 500px at 5% -10%, rgba(45,212,191,.22), transparent 60%), radial-gradient(800px 500px at 110% 5%, rgba(99,102,241,.22), transparent 55%); background-attachment:fixed; }
+  .brand { display:flex; align-items:center; justify-content:center; gap:10px; }
+  .brand svg { width:38px; height:38px; flex:none; filter:drop-shadow(0 4px 8px rgba(99,102,241,.4)); }
+  h1 { font-size:26px; font-weight:800; letter-spacing:-.5px; margin:0; }
+  .card { background:rgba(255,255,255,.72); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(128,128,128,.18); box-shadow:0 8px 24px -12px rgba(15,23,42,.35); border-radius:18px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .card { background:rgba(30,41,59,.6); } }
+  :root[data-theme="dark"] .card { background:rgba(30,41,59,.6); }
+  .card h2 { font-weight:700; }
+  .tile { border:1px solid rgba(128,128,128,.12); }
+  .tile b { font-weight:800; }
+  .elapsed { background:linear-gradient(135deg,#2dd4bf,#818cf8); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .bar .main { background:linear-gradient(135deg,#10b981,#0d9488); box-shadow:0 10px 24px -8px rgba(16,185,129,.6); border-radius:18px; }
+  .bar .main.out { background:linear-gradient(135deg,#f43f5e,#dc2626); box-shadow:0 10px 24px -8px rgba(220,38,38,.6); }
+  #updateBtn { margin-top:8px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Punch Clock</h1>
-  <div class="status" id="status">Clocked out</div>
-  <button class="main" id="punchBtn">Punch In</button>
+  <div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#6366f1"/></linearGradient></defs><rect width="40" height="40" rx="10" fill="url(#lg)"/><circle cx="20" cy="20" r="11" fill="none" stroke="#fff" stroke-width="3"/><path d="M20 20V13M20 20l5 3" stroke="#fff" stroke-width="3" stroke-linecap="round" fill="none"/></svg><h1>Punch Clock</h1></div>
+  <div class="hero"><div class="status" id="status">Clocked out</div><div class="elapsed" id="elapsed">0:00:00</div></div>
 
   <div class="card">
     <h2>Today</h2>
-    <div class="row"><span>Hours</span><b id="todayHours">0:00</b></div>
-    <div class="row"><span>Gross</span><b id="todayGross">$0.00</b></div>
-    <div class="row"><span>Net</span><b id="todayNet">$0.00</b></div>
+    <div class="tiles">
+      <div class="tile"><span>Hours</span><b id="todayHours">0:00</b></div>
+      <div class="tile"><span>Gross</span><b id="todayGross">$0.00</b></div>
+      <div class="tile"><span>Net</span><b id="todayNet">$0.00</b></div>
+    </div>
   </div>
 
   <div class="card">
     <h2 id="periodTitle">Pay Period</h2>
-    <div class="row"><span>Hours</span><b id="periodHours">0:00</b></div>
-    <div class="row"><span>Gross</span><b id="periodGross">$0.00</b></div>
-    <div class="row"><span>Net</span><b id="periodNet">$0.00</b></div>
+    <div class="tiles">
+      <div class="tile"><span>Hours</span><b id="periodHours">0:00</b></div>
+      <div class="tile"><span>Gross</span><b id="periodGross">$0.00</b></div>
+      <div class="tile"><span>Net</span><b id="periodNet">$0.00</b></div>
+    </div>
     <div class="row"><span>Payday</span><b id="payday"></b></div>
   </div>
 
   <div class="card">
-    <h2>Settings</h2>
-    <div class="settings">
-      <label>Hourly wage ($)<input type="number" step="0.01" id="wage"></label>
-      <label>Tax rate (%)<input type="number" step="0.1" id="tax"></label>
-    </div>
+    <h2>Punch Log (this pay period)</h2>
+    <div id="log"></div>
+    <button class="sec" id="addBtn">+ Add missed punch</button>
+  </div>
+
+  <div class="card">
+    <h2>Adjustments (this pay period)</h2>
+    <div id="adjList"></div>
+    <button class="sec" id="addAdjBtn">+ Add deduction or addition</button>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Settings</summary>
+      <div class="settings">
+        <label>Hourly wage ($)<input type="number" step="0.01" id="wage"></label>
+        <label>Tax rate (%)<input type="number" step="0.1" id="tax"></label>
+      </div>
+    </details>
   </div>
 
   <div class="small">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day.<br>
-    <button class="linkbtn" id="clearBtn">Clear all punches</button></div>
+    <button class="linkbtn" id="clearBtn">Clear all punches</button><br><button class="sec" id="updateBtn">↻ Check for updates</button><div class="muted" id="verLabel"></div></div>
 </div>
+
+<div class="bar"><button class="main" id="punchBtn">Punch In</button></div>
+<div class="toast" id="toast"></div>
 
 <script>
 const KEY = 'punchclock_v1';
-let state = JSON.parse(localStorage.getItem(KEY) || 'null') || { wage:34.5, tax:25, punches:[] };
-// punches: [{start: ms, end: ms|null}]
+let state = { wage:34.5, tax:25, punches:[] };
+try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) state = s; } catch (e) {}
 
-function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
-
+if (!state.adjustments) state.adjustments = [];
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 function dayKey(ms){ const d=new Date(ms); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
 
-// Split a punch across midnight so each piece belongs to one calendar day.
 function hoursByDay(now){
   const days = {};
   state.punches.forEach(p=>{
@@ -82,7 +163,6 @@ function hoursByDay(now){
   return days;
 }
 
-// Pay for one day's hours with daily overtime rules.
 function dayPay(h){
   const w = state.wage;
   const reg = Math.min(h, 8);
@@ -91,22 +171,16 @@ function dayPay(h){
   return reg*w + ot*w*1.5 + dt*w*2;
 }
 
-function fmtHours(h){
-  const totalMin = Math.round(h*60);
-  return Math.floor(totalMin/60)+':'+String(totalMin%60).padStart(2,'0');
-}
+function fmtHours(h){ const m = Math.round(h*60); return Math.floor(m/60)+':'+String(m%60).padStart(2,'0'); }
 function money(x){ return '$'+x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtDate(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
 
 function periodFor(date){
   const y=date.getFullYear(), m=date.getMonth();
-  if (date.getDate() <= 15){
-    return { start:new Date(y,m,1), end:new Date(y,m,15), pay:new Date(y,m,20) };
-  }
+  if (date.getDate() <= 15) return { start:new Date(y,m,1), end:new Date(y,m,15), pay:new Date(y,m,20) };
   const last = new Date(y,m+1,0).getDate();
   return { start:new Date(y,m,16), end:new Date(y,m,last), pay:new Date(y,m+1,5) };
 }
-
-function fmtDate(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
 
 function render(){
   const now = Date.now();
@@ -127,39 +201,192 @@ function render(){
   }
   document.getElementById('periodTitle').textContent = 'Pay Period: '+fmtDate(per.start)+' to '+fmtDate(per.end);
   document.getElementById('periodHours').textContent = fmtHours(pH);
-  document.getElementById('periodGross').textContent = money(pG);
-  document.getElementById('periodNet').textContent = money(pG*(1-tax));
+  const adj = periodAdjustments(per);
+  const gross = pG + adj.addTax;
+  const taxable = Math.max(0, gross - adj.dedPre);
+  const net = taxable*(1-tax) + adj.addFree - adj.dedPost;
+  document.getElementById('periodGross').textContent = money(gross);
+  document.getElementById('periodNet').textContent = money(net);
   document.getElementById('payday').textContent = fmtDate(per.pay);
 
-  const open = state.punches.length && state.punches[state.punches.length-1].end === null;
+  const last = state.punches[state.punches.length-1];
+  const open = last && last.end === null;
   const btn = document.getElementById('punchBtn');
   const status = document.getElementById('status');
   if (open){
     btn.textContent='Punch Out'; btn.classList.add('out');
-    status.textContent='Clocked in since '+new Date(state.punches[state.punches.length-1].start).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+    status.textContent='Clocked in since '+new Date(last.start).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
     status.classList.add('on');
   } else {
     btn.textContent='Punch In'; btn.classList.remove('out');
     status.textContent='Clocked out'; status.classList.remove('on');
   }
+  const el = document.getElementById('elapsed');
+  const sec = open ? Math.floor((now - last.start)/1000) : 0;
+  el.textContent = Math.floor(sec/3600)+':'+String(Math.floor(sec%3600/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');
+  el.style.opacity = open ? 1 : 0.4;
 }
 
 document.getElementById('punchBtn').onclick = ()=>{
   const last = state.punches[state.punches.length-1];
-  if (last && last.end === null) last.end = Date.now();
-  else state.punches.push({start:Date.now(), end:null});
-  save(); render();
+  if (last && last.end === null){ last.end = Date.now(); toast('Punched out at '+fmtTime(last.end)); }
+  else { state.punches.push({start:Date.now(), end:null}); toast('Punched in at '+fmtTime(Date.now())); }
+  save(); render(); renderLog();
 };
 document.getElementById('wage').value = state.wage;
 document.getElementById('tax').value = state.tax;
 document.getElementById('wage').oninput = e=>{ state.wage = parseFloat(e.target.value)||0; save(); render(); };
 document.getElementById('tax').oninput = e=>{ state.tax = parseFloat(e.target.value)||0; save(); render(); };
 document.getElementById('clearBtn').onclick = ()=>{
-  if (confirm('Delete all punches?')){ state.punches=[]; save(); render(); }
+  if (confirm('Delete all punches?')){ state.punches=[]; editing=null; save(); render(); renderLog(); }
+};
+
+let toastT;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), 2200);
+  try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {}
+}
+let editing = null, isNew = false;
+const pad = n => String(n).padStart(2,'0');
+function toInput(ms){ const d=new Date(ms); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes()); }
+function fmtTime(ms){ return new Date(ms).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); }
+function fmtDay(ms){ return new Date(ms).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); }
+
+function renderLog(){
+  const per = periodFor(new Date());
+  const from = per.start.getTime();
+  const to = new Date(per.end.getFullYear(), per.end.getMonth(), per.end.getDate()+1).getTime();
+  const list = state.punches.filter(p => p.start >= from && p.start < to).sort((a,b)=>b.start-a.start);
+  const box = document.getElementById('log');
+  box.innerHTML = '';
+  if (!list.length){ box.innerHTML = '<div class="empty">No punches yet this pay period.</div>'; return; }
+  list.forEach(p => {
+    const row = document.createElement('div');
+    if (p === editing){
+      row.className = 'logrow editing';
+      row.innerHTML = '<label>In<input type="datetime-local" class="ei" value="'+toInput(p.start)+'"></label>'
+        + '<label>Out<input type="datetime-local" class="eo" value="'+(p.end ? toInput(p.end) : '')+'"></label>'
+        + '<div class="acts"><button class="sec ok">Save</button><button class="sec cancel">Cancel</button><button class="linkbtn del">Delete</button></div>';
+      row.querySelector('.ok').onclick = () => {
+        const iv = row.querySelector('.ei').value, ov = row.querySelector('.eo').value;
+        if (!iv){ alert('Enter an in time.'); return; }
+        const s = new Date(iv).getTime(), e = ov ? new Date(ov).getTime() : null;
+        if (e === null && p.end !== null){ alert('Enter an out time.'); return; }
+        if (e !== null && e <= s){ alert('Out time must be after in time.'); return; }
+        if (e === null && state.punches.some(q => q !== p && q.end === null)){ alert('Another punch is still running.'); return; }
+        p.start = s; p.end = e;
+        state.punches.sort((a,b)=>a.start-b.start);
+        editing = null; isNew = false; save(); render(); renderLog();
+      };
+      row.querySelector('.cancel').onclick = () => {
+        if (isNew) state.punches = state.punches.filter(q => q !== p);
+        editing = null; isNew = false; save(); render(); renderLog();
+      };
+      row.querySelector('.del').onclick = () => {
+        if (!confirm('Delete this punch?')) return;
+        state.punches = state.punches.filter(q => q !== p);
+        editing = null; isNew = false; save(); render(); renderLog();
+      };
+    } else {
+      row.className = 'logrow';
+      const h = ((p.end ?? Date.now()) - p.start)/3600000;
+      row.innerHTML = '<div><b>'+fmtDay(p.start)+'</b><br><span class="muted">'+fmtTime(p.start)+' to '+(p.end ? fmtTime(p.end) : 'running')+'</span></div>'
+        + '<div class="hrs">'+fmtHours(h)+'<br><button class="edit">Edit</button></div>';
+      row.querySelector('.edit').onclick = () => { editing = p; isNew = false; renderLog(); };
+    }
+    box.appendChild(row);
+  });
+}
+
+document.getElementById('addBtn').onclick = () => {
+  const d = new Date();
+  const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9).getTime();
+  const e = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 17).getTime();
+  const p = {start:s, end:e};
+  state.punches.push(p);
+  state.punches.sort((a,b)=>a.start-b.start);
+  editing = p; isNew = true; save(); render(); renderLog();
+};
+
+const KINDS = {addTax:'Addition (taxed)', addFree:'Addition (not taxed)', dedPre:'Deduction (before tax)', dedPost:'Deduction (after tax)'};
+function pKey(per){ const d = per.start; return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function periodAdjustments(per){
+  const key = pKey(per), t = {addTax:0, addFree:0, dedPre:0, dedPost:0};
+  state.adjustments.forEach(a => { if (a.recurring || a.period === key) t[a.kind] += a.amount; });
+  return t;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+let editingAdj = null, isNewAdj = false;
+
+function renderAdj(){
+  const key = pKey(periodFor(new Date()));
+  const list = state.adjustments.filter(a => a.recurring || a.period === key);
+  const box = document.getElementById('adjList');
+  box.innerHTML = '';
+  if (!list.length){ box.innerHTML = '<div class="empty">None yet. Add vacation pay, benefits, and more.</div>'; }
+  list.forEach(a => {
+    const row = document.createElement('div');
+    if (a === editingAdj){
+      row.className = 'logrow editing';
+      row.innerHTML = '<label>Name<input type="text" class="al" placeholder="e.g. Vacation pay"></label>'
+        + '<label>Amount ($)<input type="number" step="0.01" inputmode="decimal" class="aa"></label>'
+        + '<label>Type<select class="ak">' + Object.keys(KINDS).map(k => '<option value="'+k+'">'+KINDS[k]+'</option>').join('') + '</select></label>'
+        + '<label class="chk"><input type="checkbox" class="ar"> Repeats every pay period</label>'
+        + '<div class="acts"><button class="sec ok">Save</button><button class="sec cancel">Cancel</button><button class="linkbtn del">Delete</button></div>';
+      row.querySelector('.al').value = a.label;
+      row.querySelector('.aa').value = a.amount || '';
+      row.querySelector('.ak').value = a.kind;
+      row.querySelector('.ar').checked = !!a.recurring;
+      row.querySelector('.ok').onclick = () => {
+        const amt = parseFloat(row.querySelector('.aa').value);
+        if (!(amt > 0)){ alert('Enter an amount above 0.'); return; }
+        a.label = row.querySelector('.al').value.trim() || 'Adjustment';
+        a.amount = amt;
+        a.kind = row.querySelector('.ak').value;
+        a.recurring = row.querySelector('.ar').checked;
+        a.period = key;
+        editingAdj = null; isNewAdj = false; save(); render(); renderAdj();
+      };
+      row.querySelector('.cancel').onclick = () => {
+        if (isNewAdj) state.adjustments = state.adjustments.filter(q => q !== a);
+        editingAdj = null; isNewAdj = false; save(); render(); renderAdj();
+      };
+      row.querySelector('.del').onclick = () => {
+        if (!confirm('Delete this adjustment?')) return;
+        state.adjustments = state.adjustments.filter(q => q !== a);
+        editingAdj = null; isNewAdj = false; save(); render(); renderAdj();
+      };
+    } else {
+      row.className = 'logrow';
+      const plus = a.kind.indexOf('add') === 0;
+      row.innerHTML = '<div><b>'+esc(a.label)+'</b><br><span class="muted">'+KINDS[a.kind]+(a.recurring ? ' · every period' : '')+'</span></div>'
+        + '<div class="hrs"><span class="'+(plus ? 'pos' : 'neg')+'">'+(plus ? '+' : '-')+money(a.amount)+'</span><br><button class="edit">Edit</button></div>';
+      row.querySelector('.edit').onclick = () => { editingAdj = a; isNewAdj = false; renderAdj(); };
+    }
+    box.appendChild(row);
+  });
+}
+
+document.getElementById('addAdjBtn').onclick = () => {
+  const a = {label:'', amount:0, kind:'dedPost', recurring:false, period:pKey(periodFor(new Date()))};
+  state.adjustments.push(a);
+  editingAdj = a; isNewAdj = true; renderAdj();
 };
 
 render();
+renderLog();
+renderAdj();
 setInterval(render, 1000);
+
+const VERSION = 'v5';
+document.getElementById('verLabel').textContent = 'Version ' + VERSION;
+document.getElementById('updateBtn').onclick = () => {
+  toast('Checking for updates...');
+  setTimeout(() => location.reload(), 700);
+};
+
 </script>
 </body>
 </html>
