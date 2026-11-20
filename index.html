@@ -83,11 +83,16 @@
   .bar .main { background:linear-gradient(135deg,#10b981,#0d9488); box-shadow:0 10px 24px -8px rgba(16,185,129,.6); border-radius:18px; }
   .bar .main.out { background:linear-gradient(135deg,#f43f5e,#dc2626); box-shadow:0 10px 24px -8px rgba(220,38,38,.6); }
   #updateBtn { margin-top:8px; }
+  [hidden] { display:none !important; }
+  .topbar { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .topbar h1 { font-size:22px; }
+  .gear { width:44px; height:44px; border-radius:12px; border:none; background:rgba(128,128,128,.18); font-size:22px; cursor:pointer; flex:none; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#6366f1"/></linearGradient></defs><rect width="40" height="40" rx="10" fill="url(#lg)"/><circle cx="20" cy="20" r="11" fill="none" stroke="#fff" stroke-width="3"/><path d="M20 20V13M20 20l5 3" stroke="#fff" stroke-width="3" stroke-linecap="round" fill="none"/></svg><h1>Punch Clock</h1></div>
+ <div id="pageMain">
+  <div class="topbar"><div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#6366f1"/></linearGradient></defs><rect width="40" height="40" rx="10" fill="url(#lg)"/><circle cx="20" cy="20" r="11" fill="none" stroke="#fff" stroke-width="3"/><path d="M20 20V13M20 20l5 3" stroke="#fff" stroke-width="3" stroke-linecap="round" fill="none"/></svg><h1>Punch Clock</h1></div><button class="gear" id="gearBtn" aria-label="Settings">⚙️</button></div>
   <div class="hero"><div class="status" id="status">Clocked out</div><div class="elapsed" id="elapsed">0:00:00</div></div>
 
   <div class="card">
@@ -115,6 +120,21 @@
     <button class="sec" id="addBtn">+ Add missed punch</button>
   </div>
 
+  <div class="small">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day.</div>
+ </div>
+
+ <div id="pageSettings" hidden>
+  <div class="topbar"><button class="sec" id="backBtn">← Back</button><h1>Settings</h1><span style="width:72px"></span></div>
+
+  <div class="card">
+    <h2>Pay</h2>
+    <div class="settings">
+      <label>Hourly wage ($)<input type="number" step="0.01" id="wage"></label>
+      <label>Tax rate (%)<input type="number" step="0.1" id="tax"></label>
+    </div>
+    <div class="muted" style="margin-top:10px">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day.</div>
+  </div>
+
   <div class="card">
     <h2>Adjustments (this pay period)</h2>
     <div id="adjList"></div>
@@ -122,17 +142,12 @@
   </div>
 
   <div class="card">
-    <details>
-      <summary>Settings</summary>
-      <div class="settings">
-        <label>Hourly wage ($)<input type="number" step="0.01" id="wage"></label>
-        <label>Tax rate (%)<input type="number" step="0.1" id="tax"></label>
-      </div>
-    </details>
+    <h2>App</h2>
+    <button class="sec" id="updateBtn">↻ Check for updates</button>
+    <div class="muted" id="verLabel"></div>
+    <button class="linkbtn" id="clearBtn">Clear all punches</button>
   </div>
-
-  <div class="small">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day.<br>
-    <button class="linkbtn" id="clearBtn">Clear all punches</button><br><button class="sec" id="updateBtn">↻ Check for updates</button><div class="muted" id="verLabel"></div></div>
+ </div>
 </div>
 
 <div class="bar"><button class="main" id="punchBtn">Punch In</button></div>
@@ -201,7 +216,8 @@ function render(){
   }
   document.getElementById('periodTitle').textContent = 'Pay Period: '+fmtDate(per.start)+' to '+fmtDate(per.end);
   document.getElementById('periodHours').textContent = fmtHours(pH);
-  const adj = periodAdjustments(per);
+  periodWages = pG;
+  const adj = periodAdjustments(per, pG);
   const gross = pG + adj.addTax;
   const taxable = Math.max(0, gross - adj.dedPre);
   const net = taxable*(1-tax) + adj.addFree - adj.dedPost;
@@ -312,9 +328,11 @@ document.getElementById('addBtn').onclick = () => {
 
 const KINDS = {addTax:'Addition (taxed)', addFree:'Addition (not taxed)', dedPre:'Deduction (before tax)', dedPost:'Deduction (after tax)'};
 function pKey(per){ const d = per.start; return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
-function periodAdjustments(per){
+let periodWages = 0;
+function adjValue(a, base){ return a.mode === 'pct' ? (base === undefined ? periodWages : base) * a.amount / 100 : a.amount; }
+function periodAdjustments(per, base){
   const key = pKey(per), t = {addTax:0, addFree:0, dedPre:0, dedPost:0};
-  state.adjustments.forEach(a => { if (a.recurring || a.period === key) t[a.kind] += a.amount; });
+  state.adjustments.forEach(a => { if (a.recurring || a.period === key) t[a.kind] += adjValue(a, base); });
   return t;
 }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -331,19 +349,24 @@ function renderAdj(){
     if (a === editingAdj){
       row.className = 'logrow editing';
       row.innerHTML = '<label>Name<input type="text" class="al" placeholder="e.g. Vacation pay"></label>'
-        + '<label>Amount ($)<input type="number" step="0.01" inputmode="decimal" class="aa"></label>'
+        + '<label>Amount type<select class="am"><option value="fixed">Dollar amount ($)</option><option value="pct">Percent of gross pay (%)</option></select></label>'
+        + '<label>Amount<input type="number" step="0.01" inputmode="decimal" class="aa"></label>'
         + '<label>Type<select class="ak">' + Object.keys(KINDS).map(k => '<option value="'+k+'">'+KINDS[k]+'</option>').join('') + '</select></label>'
         + '<label class="chk"><input type="checkbox" class="ar"> Repeats every pay period</label>'
         + '<div class="acts"><button class="sec ok">Save</button><button class="sec cancel">Cancel</button><button class="linkbtn del">Delete</button></div>';
       row.querySelector('.al').value = a.label;
       row.querySelector('.aa').value = a.amount || '';
+      row.querySelector('.am').value = a.mode || 'fixed';
       row.querySelector('.ak').value = a.kind;
       row.querySelector('.ar').checked = !!a.recurring;
       row.querySelector('.ok').onclick = () => {
         const amt = parseFloat(row.querySelector('.aa').value);
+        const mode = row.querySelector('.am').value;
         if (!(amt > 0)){ alert('Enter an amount above 0.'); return; }
+        if (mode === 'pct' && amt > 100){ alert('Percent can\'t be above 100.'); return; }
         a.label = row.querySelector('.al').value.trim() || 'Adjustment';
         a.amount = amt;
+        a.mode = mode;
         a.kind = row.querySelector('.ak').value;
         a.recurring = row.querySelector('.ar').checked;
         a.period = key;
@@ -361,8 +384,8 @@ function renderAdj(){
     } else {
       row.className = 'logrow';
       const plus = a.kind.indexOf('add') === 0;
-      row.innerHTML = '<div><b>'+esc(a.label)+'</b><br><span class="muted">'+KINDS[a.kind]+(a.recurring ? ' · every period' : '')+'</span></div>'
-        + '<div class="hrs"><span class="'+(plus ? 'pos' : 'neg')+'">'+(plus ? '+' : '-')+money(a.amount)+'</span><br><button class="edit">Edit</button></div>';
+      row.innerHTML = '<div><b>'+esc(a.label)+'</b><br><span class="muted">'+KINDS[a.kind]+(a.mode === 'pct' ? ' · '+a.amount+'% of gross' : '')+(a.recurring ? ' · every period' : '')+'</span></div>'
+        + '<div class="hrs"><span class="'+(plus ? 'pos' : 'neg')+'">'+(plus ? '+' : '-')+money(adjValue(a))+'</span><br><button class="edit">Edit</button></div>';
       row.querySelector('.edit').onclick = () => { editingAdj = a; isNewAdj = false; renderAdj(); };
     }
     box.appendChild(row);
@@ -380,7 +403,18 @@ renderLog();
 renderAdj();
 setInterval(render, 1000);
 
-const VERSION = 'v5';
+function showPage(p){
+  const s = p === 'settings';
+  document.getElementById('pageMain').hidden = s;
+  document.getElementById('pageSettings').hidden = !s;
+  document.querySelector('.bar').hidden = s;
+  if (s) renderAdj();
+  window.scrollTo(0, 0);
+}
+document.getElementById('gearBtn').onclick = () => showPage('settings');
+document.getElementById('backBtn').onclick = () => showPage('main');
+
+const VERSION = 'v6';
 document.getElementById('verLabel').textContent = 'Version ' + VERSION;
 document.getElementById('updateBtn').onclick = () => {
   toast('Checking for updates...');
