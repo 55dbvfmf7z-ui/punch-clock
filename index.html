@@ -87,6 +87,8 @@
   .topbar { display:flex; align-items:center; justify-content:space-between; gap:10px; }
   .topbar h1 { font-size:22px; }
   .gear { width:44px; height:44px; border-radius:12px; border:none; background:rgba(128,128,128,.18); font-size:22px; cursor:pointer; flex:none; }
+  .tiles.two { grid-template-columns:repeat(2,1fr); }
+  .trow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 </style>
 </head>
 <body>
@@ -97,10 +99,9 @@
 
   <div class="card">
     <h2>Today</h2>
-    <div class="tiles">
+    <div class="tiles two">
       <div class="tile"><span>Hours</span><b id="todayHours">0:00</b></div>
       <div class="tile"><span>Gross</span><b id="todayGross">$0.00</b></div>
-      <div class="tile"><span>Net</span><b id="todayNet">$0.00</b></div>
     </div>
   </div>
 
@@ -120,7 +121,7 @@
     <button class="sec" id="addBtn">+ Add missed punch</button>
   </div>
 
-  <div class="small">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day.</div>
+  <div class="small">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day. Saturdays: 1.5x if you worked 40+ regular hours Sun-Fri.</div>
  </div>
 
  <div id="pageSettings" hidden>
@@ -130,9 +131,8 @@
     <h2>Pay</h2>
     <div class="settings">
       <label>Hourly wage ($)<input type="number" step="0.01" id="wage"></label>
-      <label>Tax rate (%)<input type="number" step="0.1" id="tax"></label>
     </div>
-    <div class="muted" style="margin-top:10px">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day.</div>
+    <div class="muted" style="margin-top:10px">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day. Saturdays: 1.5x if you worked 40+ regular hours Sun-Fri.</div>
   </div>
 
   <div class="card">
@@ -155,10 +155,11 @@
 
 <script>
 const KEY = 'punchclock_v1';
-let state = { wage:34.5, tax:25, punches:[] };
+let state = { wage:34.5, punches:[] };
 try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) state = s; } catch (e) {}
 
 if (!state.adjustments) state.adjustments = [];
+state.adjustments.forEach(a => { a.kind = String(a.kind).indexOf('add') === 0 ? 'add' : 'ded'; });
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 function dayKey(ms){ const d=new Date(ms); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
 
@@ -178,12 +179,23 @@ function hoursByDay(now){
   return days;
 }
 
-function dayPay(h){
+// Saturday earns time and a half if Sun-Fri had at least 40 regular hours (up to 8 per day).
+function satBonus(date, days){
+  if (date.getDay() !== 6) return false;
+  let reg = 0;
+  for (let i = 1; i <= 6; i++){
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate() - i);
+    reg += Math.min(days[dayKey(d.getTime())] || 0, 8);
+  }
+  return reg >= 40 - 0.0001;
+}
+
+function dayPay(h, sat){
   const w = state.wage;
   const reg = Math.min(h, 8);
   const ot = Math.max(0, Math.min(h, 12) - 8);
   const dt = Math.max(0, h - 12);
-  return reg*w + ot*w*1.5 + dt*w*2;
+  return reg*w*(sat ? 1.5 : 1) + ot*w*1.5 + dt*w*2;
 }
 
 function fmtHours(h){ const m = Math.round(h*60); return Math.floor(m/60)+':'+String(m%60).padStart(2,'0'); }
@@ -200,27 +212,24 @@ function periodFor(date){
 function render(){
   const now = Date.now();
   const days = hoursByDay(now);
-  const tax = state.tax/100;
 
   const todayH = days[dayKey(now)] || 0;
-  const todayG = dayPay(todayH);
+  const todayG = dayPay(todayH, satBonus(new Date(now), days));
   document.getElementById('todayHours').textContent = fmtHours(todayH);
   document.getElementById('todayGross').textContent = money(todayG);
-  document.getElementById('todayNet').textContent = money(todayG*(1-tax));
 
   const per = periodFor(new Date(now));
   let pH=0, pG=0;
   for (let d=new Date(per.start); d<=per.end; d.setDate(d.getDate()+1)){
     const h = days[dayKey(d.getTime())] || 0;
-    pH += h; pG += dayPay(h);
+    pH += h; pG += dayPay(h, satBonus(d, days));
   }
   document.getElementById('periodTitle').textContent = 'Pay Period: '+fmtDate(per.start)+' to '+fmtDate(per.end);
   document.getElementById('periodHours').textContent = fmtHours(pH);
   periodWages = pG;
   const adj = periodAdjustments(per, pG);
-  const gross = pG + adj.addTax;
-  const taxable = Math.max(0, gross - adj.dedPre);
-  const net = taxable*(1-tax) + adj.addFree - adj.dedPost;
+  const gross = pG + adj.add;
+  const net = gross - adj.ded;
   document.getElementById('periodGross').textContent = money(gross);
   document.getElementById('periodNet').textContent = money(net);
   document.getElementById('payday').textContent = fmtDate(per.pay);
@@ -250,9 +259,7 @@ document.getElementById('punchBtn').onclick = ()=>{
   save(); render(); renderLog();
 };
 document.getElementById('wage').value = state.wage;
-document.getElementById('tax').value = state.tax;
 document.getElementById('wage').oninput = e=>{ state.wage = parseFloat(e.target.value)||0; save(); render(); };
-document.getElementById('tax').oninput = e=>{ state.tax = parseFloat(e.target.value)||0; save(); render(); };
 document.getElementById('clearBtn').onclick = ()=>{
   if (confirm('Delete all punches?')){ state.punches=[]; editing=null; save(); render(); renderLog(); }
 };
@@ -267,6 +274,8 @@ function toast(msg){
 let editing = null, isNew = false;
 const pad = n => String(n).padStart(2,'0');
 function toInput(ms){ const d=new Date(ms); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes()); }
+function toDate(ms){ const d=new Date(ms); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function toTime(ms){ const d=new Date(ms); return pad(d.getHours())+':'+pad(d.getMinutes()); }
 function fmtTime(ms){ return new Date(ms).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); }
 function fmtDay(ms){ return new Date(ms).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); }
 
@@ -282,13 +291,17 @@ function renderLog(){
     const row = document.createElement('div');
     if (p === editing){
       row.className = 'logrow editing';
-      row.innerHTML = '<label>In<input type="datetime-local" class="ei" value="'+toInput(p.start)+'"></label>'
-        + '<label>Out<input type="datetime-local" class="eo" value="'+(p.end ? toInput(p.end) : '')+'"></label>'
+      const origOut = p.end ? toTime(p.end) : '';
+      row.innerHTML = '<label>Date<input type="date" class="ed" value="'+toDate(p.start)+'"></label>'
+        + '<div class="trow"><label>Punch in<input type="time" class="ei" value="'+toTime(p.start)+'"></label>'
+        + '<label>Punch out<input type="time" class="eo" value="'+origOut+'"></label></div>'
         + '<div class="acts"><button class="sec ok">Save</button><button class="sec cancel">Cancel</button><button class="linkbtn del">Delete</button></div>';
       row.querySelector('.ok').onclick = () => {
-        const iv = row.querySelector('.ei').value, ov = row.querySelector('.eo').value;
+        const dv = row.querySelector('.ed').value, iv = row.querySelector('.ei').value, ov = row.querySelector('.eo').value;
+        if (!dv){ alert('Enter a date.'); return; }
         if (!iv){ alert('Enter an in time.'); return; }
-        const s = new Date(iv).getTime(), e = ov ? new Date(ov).getTime() : null;
+        const s = new Date(dv+'T'+iv).getTime();
+        const e = ov ? ((ov === origOut && p.end) ? p.end : new Date(dv+'T'+ov).getTime()) : null;
         if (e === null && p.end !== null){ alert('Enter an out time.'); return; }
         if (e !== null && e <= s){ alert('Out time must be after in time.'); return; }
         if (e === null && state.punches.some(q => q !== p && q.end === null)){ alert('Another punch is still running.'); return; }
@@ -326,12 +339,12 @@ document.getElementById('addBtn').onclick = () => {
   editing = p; isNew = true; save(); render(); renderLog();
 };
 
-const KINDS = {addTax:'Addition (taxed)', addFree:'Addition (not taxed)', dedPre:'Deduction (before tax)', dedPost:'Deduction (after tax)'};
+const KINDS = {add:'Addition', ded:'Deduction'};
 function pKey(per){ const d = per.start; return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
 let periodWages = 0;
 function adjValue(a, base){ return a.mode === 'pct' ? (base === undefined ? periodWages : base) * a.amount / 100 : a.amount; }
 function periodAdjustments(per, base){
-  const key = pKey(per), t = {addTax:0, addFree:0, dedPre:0, dedPost:0};
+  const key = pKey(per), t = {add:0, ded:0};
   state.adjustments.forEach(a => { if (a.recurring || a.period === key) t[a.kind] += adjValue(a, base); });
   return t;
 }
@@ -393,7 +406,7 @@ function renderAdj(){
 }
 
 document.getElementById('addAdjBtn').onclick = () => {
-  const a = {label:'', amount:0, kind:'dedPost', recurring:false, period:pKey(periodFor(new Date()))};
+  const a = {label:'', amount:0, kind:'ded', recurring:false, period:pKey(periodFor(new Date()))};
   state.adjustments.push(a);
   editingAdj = a; isNewAdj = true; renderAdj();
 };
