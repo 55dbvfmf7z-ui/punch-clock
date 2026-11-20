@@ -7,11 +7,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Punch Clock">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0b1020">
-<link rel="apple-touch-icon" href="icon.png">
-<link rel="icon" href="icon.png">
-<link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap">
 <style>
   :root {
@@ -89,6 +84,11 @@
   .gear { width:44px; height:44px; border-radius:12px; border:none; background:rgba(128,128,128,.18); font-size:22px; cursor:pointer; flex:none; }
   .tiles.two { grid-template-columns:repeat(2,1fr); }
   .trow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .info { text-align:center; margin-top:8px; }
+  .pnav { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:10px; }
+  .pnav h2 { margin:0; flex:1; text-align:center; }
+  .navbtn { width:44px; height:44px; border-radius:12px; border:none; background:rgba(128,128,128,.18); color:var(--text); font-size:26px; line-height:1; cursor:pointer; flex:none; }
+  .navbtn:disabled { opacity:.3; cursor:default; }
 </style>
 </head>
 <body>
@@ -106,19 +106,26 @@
   </div>
 
   <div class="card">
-    <h2 id="periodTitle">Pay Period</h2>
+    <div class="pnav"><button class="navbtn" id="prevPer" aria-label="Previous pay period">‹</button><h2 id="periodTitle">Pay Period</h2><button class="navbtn" id="nextPer" aria-label="Next pay period">›</button></div>
     <div class="tiles">
       <div class="tile"><span>Hours</span><b id="periodHours">0:00</b></div>
       <div class="tile"><span>Gross</span><b id="periodGross">$0.00</b></div>
       <div class="tile"><span>Net</span><b id="periodNet">$0.00</b></div>
     </div>
-    <div class="row"><span>Payday</span><b id="payday"></b></div>
+    <div class="row"><span>Paid on</span><b id="payday"></b></div>
+    <div class="muted info" id="periodInfo"></div>
   </div>
 
   <div class="card">
-    <h2>Punch Log (this pay period)</h2>
+    <h2 id="logTitle">Punch Log</h2>
     <div id="log"></div>
     <button class="sec" id="addBtn">+ Add missed punch</button>
+  </div>
+
+  <div class="card">
+    <h2 id="daysTitle">Days off</h2>
+    <div id="daysList"></div>
+    <button class="sec" id="addDayBtn">+ Add day off</button>
   </div>
 
   <div class="small">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day. Saturdays: 1.5x if you worked 40+ regular hours Sun-Fri.</div>
@@ -136,7 +143,7 @@
   </div>
 
   <div class="card">
-    <h2>Adjustments (this pay period)</h2>
+    <h2 id="adjTitle">Adjustments</h2>
     <div id="adjList"></div>
     <button class="sec" id="addAdjBtn">+ Add deduction or addition</button>
   </div>
@@ -218,21 +225,34 @@ function render(){
   document.getElementById('todayHours').textContent = fmtHours(todayH);
   document.getElementById('todayGross').textContent = money(todayG);
 
-  const per = periodFor(new Date(now));
+  const per = viewPeriod();
   let pH=0, pG=0;
   for (let d=new Date(per.start); d<=per.end; d.setDate(d.getDate()+1)){
     const h = days[dayKey(d.getTime())] || 0;
     pH += h; pG += dayPay(h, satBonus(d, days));
   }
-  document.getElementById('periodTitle').textContent = 'Pay Period: '+fmtDate(per.start)+' to '+fmtDate(per.end);
+  document.getElementById('periodTitle').textContent = fmtDate(per.start)+' – '+fmtDate(per.end);
+  document.getElementById('nextPer').disabled = viewOffset >= 0;
   document.getElementById('periodHours').textContent = fmtHours(pH);
-  periodWages = pG;
-  const adj = periodAdjustments(per, pG);
-  const gross = pG + adj.add;
+  const offAmt = offPay(per);
+  periodWages = pG + offAmt;
+  const adj = periodAdjustments(per, periodWages);
+  const gross = pG + offAmt + adj.add;
   const net = gross - adj.ded;
   document.getElementById('periodGross').textContent = money(gross);
   document.getElementById('periodNet').textContent = money(net);
   document.getElementById('payday').textContent = fmtDate(per.pay);
+  const DAY = 86400000;
+  const t0 = new Date(now), today = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate());
+  let weekdaysTotal = 0, weekdaysLeft = 0;
+  const offSet = new Set(state.daysOff.map(o => o.date));
+  for (let d = new Date(per.start); d <= per.end; d.setDate(d.getDate()+1)){
+    const wd = d.getDay();
+    if (wd !== 0 && wd !== 6 && !offSet.has(toDate(d.getTime()))){ weekdaysTotal++; if (d >= today) weekdaysLeft++; }
+  }
+  const nextPay = [new Date(today.getFullYear(), today.getMonth(), 5), new Date(today.getFullYear(), today.getMonth(), 20), new Date(today.getFullYear(), today.getMonth()+1, 5)].find(d => d >= today);
+  const until = Math.round((nextPay - today)/DAY);
+  document.getElementById('periodInfo').textContent = viewOffset < 0 ? 'Past pay period' : weekdaysLeft+' of '+weekdaysTotal+' weekdays left \u00b7 Next payday '+(until === 0 ? 'is today' : until === 1 ? 'is tomorrow' : 'in '+until+' days')+' ('+fmtDate(nextPay)+')';
 
   const last = state.punches[state.punches.length-1];
   const open = last && last.end === null;
@@ -264,6 +284,93 @@ document.getElementById('clearBtn').onclick = ()=>{
   if (confirm('Delete all punches?')){ state.punches=[]; editing=null; save(); render(); renderLog(); }
 };
 
+// ---- pay period navigation + days off ----
+let viewOffset = 0;
+function prevPeriod(per){
+  const s = per.start;
+  if (s.getDate() === 1) return periodFor(new Date(s.getFullYear(), s.getMonth()-1, 16));
+  return periodFor(new Date(s.getFullYear(), s.getMonth(), 1));
+}
+function viewPeriod(){
+  let per = periodFor(new Date());
+  for (let i = 0; i < -viewOffset; i++) per = prevPeriod(per);
+  return per;
+}
+if (!state.daysOff) state.daysOff = [];
+const OFF_TYPES = ['Stat holiday', 'Vacation', 'Sick day', 'Unpaid day off'];
+let editingDay = null, isNewDay = false;
+function parseD(str){ const p = str.split('-').map(Number); return new Date(p[0], p[1]-1, p[2]); }
+function inPeriod(str, per){ const t = parseD(str); return t >= per.start && t <= per.end; }
+function offPay(per){
+  let h = 0;
+  state.daysOff.forEach(o => { if (inPeriod(o.date, per)) h += o.hours; });
+  return h * state.wage;
+}
+
+function renderDays(){
+  const per = viewPeriod();
+  document.getElementById('daysTitle').textContent = 'Days off: ' + fmtDate(per.start) + ' to ' + fmtDate(per.end);
+  const list = state.daysOff.filter(o => inPeriod(o.date, per));
+  if (isNewDay && editingDay) list.push(editingDay);
+  list.sort((a, b) => a.date < b.date ? -1 : 1);
+  const box = document.getElementById('daysList');
+  box.innerHTML = '';
+  if (!list.length){ box.innerHTML = '<div class="empty">None. Add a stat holiday, vacation, or sick day.</div>'; }
+  list.forEach(o => {
+    const row = document.createElement('div');
+    if (o === editingDay){
+      row.className = 'logrow editing';
+      row.innerHTML = '<label>Date<input type="date" class="od" min="'+toDate(per.start.getTime())+'" max="'+toDate(per.end.getTime())+'"></label>'
+        + '<label>Type<select class="ot">' + OFF_TYPES.map(t => '<option>'+t+'</option>').join('') + '</select></label>'
+        + '<label>Paid hours<input type="number" step="0.25" min="0" inputmode="decimal" class="oh"></label>'
+        + '<div class="acts"><button class="sec ok">Save</button><button class="sec cancel">Cancel</button><button class="linkbtn del">Delete</button></div>';
+      row.querySelector('.od').value = o.date;
+      row.querySelector('.ot').value = o.type;
+      row.querySelector('.oh').value = o.hours;
+      row.querySelector('.ot').onchange = () => {
+        const hf = row.querySelector('.oh');
+        if (row.querySelector('.ot').value === 'Unpaid day off') hf.value = 0;
+        else if (!(parseFloat(hf.value) > 0)) hf.value = 8;
+      };
+      row.querySelector('.ok').onclick = () => {
+        const dv = row.querySelector('.od').value, hrs = parseFloat(row.querySelector('.oh').value);
+        if (!dv){ alert('Enter a date.'); return; }
+        if (!inPeriod(dv, per)){ alert('Pick a date inside this pay period (' + fmtDate(per.start) + ' to ' + fmtDate(per.end) + ').'); return; }
+        if (!(hrs >= 0 && hrs <= 24)){ alert('Enter paid hours from 0 to 24.'); return; }
+        o.date = dv; o.type = row.querySelector('.ot').value; o.hours = hrs;
+        if (isNewDay) state.daysOff.push(o);
+        editingDay = null; isNewDay = false; save(); render(); renderDays();
+      };
+      row.querySelector('.cancel').onclick = () => { editingDay = null; isNewDay = false; renderDays(); };
+      row.querySelector('.del').onclick = () => {
+        if (!isNewDay){
+          if (!confirm('Delete this day off?')) return;
+          state.daysOff = state.daysOff.filter(q => q !== o);
+        }
+        editingDay = null; isNewDay = false; save(); render(); renderDays();
+      };
+    } else {
+      row.className = 'logrow';
+      row.innerHTML = '<div><b>'+o.type+'</b><br><span class="muted">'+fmtDay(parseD(o.date).getTime())+' · '+(o.hours > 0 ? o.hours+' paid hrs' : 'Unpaid')+'</span></div>'
+        + '<div class="hrs"><span class="pos">'+(o.hours > 0 ? '+'+money(o.hours * state.wage) : '')+'</span><br><button class="edit">Edit</button></div>';
+      row.querySelector('.edit').onclick = () => { editingDay = o; isNewDay = false; renderDays(); };
+    }
+    box.appendChild(row);
+  });
+}
+
+function discardDrafts(){
+  if (isNew && editing) state.punches = state.punches.filter(q => q !== editing);
+  if (isNewAdj && editingAdj) state.adjustments = state.adjustments.filter(q => q !== editingAdj);
+  editing = null; editingAdj = null; editingDay = null;
+  isNew = false; isNewAdj = false; isNewDay = false;
+}
+function goPeriod(delta){
+  discardDrafts();
+  viewOffset += delta;
+  save(); render(); renderLog(); renderAdj(); renderDays();
+}
+
 let toastT;
 function toast(msg){
   const t = document.getElementById('toast');
@@ -280,7 +387,8 @@ function fmtTime(ms){ return new Date(ms).toLocaleTimeString([], {hour:'numeric'
 function fmtDay(ms){ return new Date(ms).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); }
 
 function renderLog(){
-  const per = periodFor(new Date());
+  const per = viewPeriod();
+  document.getElementById('logTitle').textContent = 'Punch Log: ' + fmtDate(per.start) + ' to ' + fmtDate(per.end);
   const from = per.start.getTime();
   const to = new Date(per.end.getFullYear(), per.end.getMonth(), per.end.getDate()+1).getTime();
   const list = state.punches.filter(p => p.start >= from && p.start < to).sort((a,b)=>b.start-a.start);
@@ -330,7 +438,7 @@ function renderLog(){
 }
 
 document.getElementById('addBtn').onclick = () => {
-  const d = new Date();
+  const d = viewOffset === 0 ? new Date() : viewPeriod().end;
   const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9).getTime();
   const e = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 17).getTime();
   const p = {start:s, end:e};
@@ -352,7 +460,9 @@ function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt
 let editingAdj = null, isNewAdj = false;
 
 function renderAdj(){
-  const key = pKey(periodFor(new Date()));
+  const per = viewPeriod();
+  const key = pKey(per);
+  document.getElementById('adjTitle').textContent = 'Adjustments: ' + fmtDate(per.start) + ' to ' + fmtDate(per.end);
   const list = state.adjustments.filter(a => a.recurring || a.period === key);
   const box = document.getElementById('adjList');
   box.innerHTML = '';
@@ -406,7 +516,7 @@ function renderAdj(){
 }
 
 document.getElementById('addAdjBtn').onclick = () => {
-  const a = {label:'', amount:0, kind:'ded', recurring:false, period:pKey(periodFor(new Date()))};
+  const a = {label:'', amount:0, kind:'ded', recurring:false, period:pKey(viewPeriod())};
   state.adjustments.push(a);
   editingAdj = a; isNewAdj = true; renderAdj();
 };
@@ -414,7 +524,16 @@ document.getElementById('addAdjBtn').onclick = () => {
 render();
 renderLog();
 renderAdj();
+renderDays();
 setInterval(render, 1000);
+
+document.getElementById('prevPer').onclick = () => goPeriod(-1);
+document.getElementById('nextPer').onclick = () => { if (viewOffset < 0) goPeriod(1); };
+document.getElementById('addDayBtn').onclick = () => {
+  const base = viewOffset === 0 ? new Date() : viewPeriod().end;
+  editingDay = {date: toDate(base.getTime()), type: 'Stat holiday', hours: 8};
+  isNewDay = true; renderDays();
+};
 
 function showPage(p){
   const s = p === 'settings';
@@ -427,13 +546,31 @@ function showPage(p){
 document.getElementById('gearBtn').onclick = () => showPage('settings');
 document.getElementById('backBtn').onclick = () => showPage('main');
 
-const VERSION = 'v6';
+const VERSION = 'v7';
 document.getElementById('verLabel').textContent = 'Version ' + VERSION;
 document.getElementById('updateBtn').onclick = () => {
   toast('Checking for updates...');
   setTimeout(() => location.reload(), 700);
 };
 
+(function makeIcon(){
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 180;
+    const x = c.getContext('2d');
+    const g = x.createLinearGradient(0,0,180,180);
+    g.addColorStop(0,'#2dd4bf'); g.addColorStop(1,'#6366f1');
+    x.fillStyle = g; x.fillRect(0,0,180,180);
+    x.strokeStyle = '#fff'; x.lineWidth = 12; x.lineCap = 'round';
+    x.beginPath(); x.arc(90,90,52,0,Math.PI*2); x.stroke();
+    x.beginPath(); x.moveTo(90,90); x.lineTo(90,56); x.moveTo(90,90); x.lineTo(114,102); x.stroke();
+    const url = c.toDataURL('image/png');
+    ['apple-touch-icon','icon'].forEach(rel => {
+      document.querySelectorAll('link[rel="'+rel+'"]').forEach(l => l.remove());
+      const l = document.createElement('link'); l.rel = rel; l.href = url;
+      document.head.appendChild(l);
+    });
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>
