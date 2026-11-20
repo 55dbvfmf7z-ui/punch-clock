@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Punch Clock</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:20px; }
+  .wrap { max-width:520px; margin:0 auto; }
+  h1 { text-align:center; margin:0 0 4px; }
+  .status { text-align:center; margin-bottom:16px; color:#94a3b8; }
+  .status.on { color:#4ade80; }
+  button.main { width:100%; padding:20px; font-size:22px; font-weight:700; border:none; border-radius:14px; cursor:pointer; color:#fff; background:#16a34a; }
+  button.main.out { background:#dc2626; }
+  .card { background:#1e293b; border-radius:14px; padding:16px; margin-top:16px; }
+  .card h2 { margin:0 0 10px; font-size:16px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; }
+  .row { display:flex; justify-content:space-between; padding:6px 0; font-size:18px; }
+  .row b { color:#fff; }
+  .settings { display:flex; gap:12px; }
+  .settings label { flex:1; font-size:14px; color:#94a3b8; }
+  .settings input { width:100%; box-sizing:border-box; padding:8px; border-radius:8px; border:none; font-size:16px; margin-top:4px; }
+  .small { font-size:13px; color:#64748b; text-align:center; margin-top:16px; }
+  .linkbtn { background:none; border:none; color:#f87171; cursor:pointer; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Punch Clock</h1>
+  <div class="status" id="status">Clocked out</div>
+  <button class="main" id="punchBtn">Punch In</button>
+
+  <div class="card">
+    <h2>Today</h2>
+    <div class="row"><span>Hours</span><b id="todayHours">0:00</b></div>
+    <div class="row"><span>Gross</span><b id="todayGross">$0.00</b></div>
+    <div class="row"><span>Net</span><b id="todayNet">$0.00</b></div>
+  </div>
+
+  <div class="card">
+    <h2 id="periodTitle">Pay Period</h2>
+    <div class="row"><span>Hours</span><b id="periodHours">0:00</b></div>
+    <div class="row"><span>Gross</span><b id="periodGross">$0.00</b></div>
+    <div class="row"><span>Net</span><b id="periodNet">$0.00</b></div>
+    <div class="row"><span>Payday</span><b id="payday"></b></div>
+  </div>
+
+  <div class="card">
+    <h2>Settings</h2>
+    <div class="settings">
+      <label>Hourly wage ($)<input type="number" step="0.01" id="wage"></label>
+      <label>Tax rate (%)<input type="number" step="0.1" id="tax"></label>
+    </div>
+  </div>
+
+  <div class="small">Overtime: 1.5x after 8 hours/day, 2x after 12 hours/day.<br>
+    <button class="linkbtn" id="clearBtn">Clear all punches</button></div>
+</div>
+
+<script>
+const KEY = 'punchclock_v1';
+let state = JSON.parse(localStorage.getItem(KEY) || 'null') || { wage:34.5, tax:25, punches:[] };
+// punches: [{start: ms, end: ms|null}]
+
+function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+
+function dayKey(ms){ const d=new Date(ms); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+
+// Split a punch across midnight so each piece belongs to one calendar day.
+function hoursByDay(now){
+  const days = {};
+  state.punches.forEach(p=>{
+    let s = p.start, e = p.end ?? now;
+    while (s < e){
+      const d = new Date(s);
+      const nextMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1).getTime();
+      const chunkEnd = Math.min(e, nextMidnight);
+      const k = dayKey(s);
+      days[k] = (days[k]||0) + (chunkEnd - s)/3600000;
+      s = chunkEnd;
+    }
+  });
+  return days;
+}
+
+// Pay for one day's hours with daily overtime rules.
+function dayPay(h){
+  const w = state.wage;
+  const reg = Math.min(h, 8);
+  const ot = Math.max(0, Math.min(h, 12) - 8);
+  const dt = Math.max(0, h - 12);
+  return reg*w + ot*w*1.5 + dt*w*2;
+}
+
+function fmtHours(h){
+  const totalMin = Math.round(h*60);
+  return Math.floor(totalMin/60)+':'+String(totalMin%60).padStart(2,'0');
+}
+function money(x){ return '$'+x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+function periodFor(date){
+  const y=date.getFullYear(), m=date.getMonth();
+  if (date.getDate() <= 15){
+    return { start:new Date(y,m,1), end:new Date(y,m,15), pay:new Date(y,m,20) };
+  }
+  const last = new Date(y,m+1,0).getDate();
+  return { start:new Date(y,m,16), end:new Date(y,m,last), pay:new Date(y,m+1,5) };
+}
+
+function fmtDate(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+
+function render(){
+  const now = Date.now();
+  const days = hoursByDay(now);
+  const tax = state.tax/100;
+
+  const todayH = days[dayKey(now)] || 0;
+  const todayG = dayPay(todayH);
+  document.getElementById('todayHours').textContent = fmtHours(todayH);
+  document.getElementById('todayGross').textContent = money(todayG);
+  document.getElementById('todayNet').textContent = money(todayG*(1-tax));
+
+  const per = periodFor(new Date(now));
+  let pH=0, pG=0;
+  for (let d=new Date(per.start); d<=per.end; d.setDate(d.getDate()+1)){
+    const h = days[dayKey(d.getTime())] || 0;
+    pH += h; pG += dayPay(h);
+  }
+  document.getElementById('periodTitle').textContent = 'Pay Period: '+fmtDate(per.start)+' to '+fmtDate(per.end);
+  document.getElementById('periodHours').textContent = fmtHours(pH);
+  document.getElementById('periodGross').textContent = money(pG);
+  document.getElementById('periodNet').textContent = money(pG*(1-tax));
+  document.getElementById('payday').textContent = fmtDate(per.pay);
+
+  const open = state.punches.length && state.punches[state.punches.length-1].end === null;
+  const btn = document.getElementById('punchBtn');
+  const status = document.getElementById('status');
+  if (open){
+    btn.textContent='Punch Out'; btn.classList.add('out');
+    status.textContent='Clocked in since '+new Date(state.punches[state.punches.length-1].start).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+    status.classList.add('on');
+  } else {
+    btn.textContent='Punch In'; btn.classList.remove('out');
+    status.textContent='Clocked out'; status.classList.remove('on');
+  }
+}
+
+document.getElementById('punchBtn').onclick = ()=>{
+  const last = state.punches[state.punches.length-1];
+  if (last && last.end === null) last.end = Date.now();
+  else state.punches.push({start:Date.now(), end:null});
+  save(); render();
+};
+document.getElementById('wage').value = state.wage;
+document.getElementById('tax').value = state.tax;
+document.getElementById('wage').oninput = e=>{ state.wage = parseFloat(e.target.value)||0; save(); render(); };
+document.getElementById('tax').oninput = e=>{ state.tax = parseFloat(e.target.value)||0; save(); render(); };
+document.getElementById('clearBtn').onclick = ()=>{
+  if (confirm('Delete all punches?')){ state.punches=[]; save(); render(); }
+};
+
+render();
+setInterval(render, 1000);
+</script>
+</body>
+</html>
